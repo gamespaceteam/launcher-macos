@@ -72,7 +72,6 @@ jobs:
           if [ "$MAC_SIGNED_RELEASE" = true ]; then
             test -n "$CSC_LINK" && test -n "$CSC_KEY_PASSWORD"
             test -n "$APPLE_ID" && test -n "$APPLE_APP_SPECIFIC_PASSWORD" && test -n "$APPLE_TEAM_ID"
-            export CSC_FOR_PULL_REQUEST=true
           fi
           npx electron-builder --config electron-builder.macos.cjs --mac --arm64 --publish never
 
@@ -121,6 +120,7 @@ jobs:
           tag="v${version}-build.${GITHUB_RUN_NUMBER}"
           printf 'Apple Silicon (arm64). Source commit: `%s`.\n\n' "$SOURCE_COMMIT" > release-notes.md
           if [ "$SIGNED" = true ]; then
+            tag="v${version}"
             printf 'Developer ID signed and notarized launcher. Game availability depends on the macOS distribution configuration.\n' >> release-notes.md
           else
             printf 'Testing build with ad-hoc signing. Not notarized; Gatekeeper may prevent normal installation. Automatic launcher updates are disabled. The macOS game build is not available yet.\n' >> release-notes.md
