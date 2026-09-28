@@ -72,6 +72,8 @@ jobs:
           if [ "$MAC_SIGNED_RELEASE" = true ]; then
             test -n "$CSC_LINK" && test -n "$CSC_KEY_PASSWORD"
             test -n "$APPLE_ID" && test -n "$APPLE_APP_SPECIFIC_PASSWORD" && test -n "$APPLE_TEAM_ID"
+          else
+            unset CSC_LINK CSC_KEY_PASSWORD APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID
           fi
           npx electron-builder --config electron-builder.macos.cjs --mac --arm64 --publish never
 
