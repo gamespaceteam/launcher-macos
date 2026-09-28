@@ -1,0 +1,128 @@
+name: Build macOS launcher
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_commit:
+        description: Full 40-character commit SHA from the private Gitea source repository
+        required: true
+        type: string
+      signed:
+        description: Developer ID signed and notarized release (requires Apple secrets)
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+
+concurrency:
+  group: macos-launcher-release
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - name: Check Apple Silicon runner and source revision
+        env:
+          SOURCE_COMMIT: ${{ inputs.source_commit }}
+        run: |
+          test "$(uname -m)" = arm64
+          [[ "$SOURCE_COMMIT" =~ ^[a-f0-9]{40}$ ]]
+
+      - name: Fetch private source with a read-only Gitea deploy key
+        env:
+          GITEA_SSH_KEY: ${{ secrets.GITEA_SSH_KEY }}
+          SOURCE_COMMIT: ${{ inputs.source_commit }}
+        run: |
+          set -euo pipefail
+          test -n "$GITEA_SSH_KEY"
+          key_dir="$(mktemp -d)"
+          trap 'rm -rf "$key_dir"' EXIT
+          printf '%s\n' "$GITEA_SSH_KEY" > "$key_dir/key"
+          chmod 600 "$key_dir/key"
+          printf '%s\n' '46.8.53.208 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPQb4w1LLEKiqI7rI82ppVGu3onLaU0b4EbjqTdB33G3' > "$key_dir/known_hosts"
+          export GIT_SSH_COMMAND="ssh -i $key_dir/key -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$key_dir/known_hosts"
+          git clone --no-checkout git@46.8.53.208:loshadka/gs-launcher-macos.git source
+          git -C source checkout --detach "$SOURCE_COMMIT"
+          test "$(git -C source rev-parse HEAD)" = "$SOURCE_COMMIT"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install, test and build
+        working-directory: source
+        run: |
+          npm ci --no-audit --no-fund
+          npm test
+          npm run web-build
+
+      - name: Package DMG and ZIP
+        working-directory: source
+        env:
+          MAC_SIGNED_RELEASE: ${{ inputs.signed }}
+          CSC_LINK: ${{ secrets.MAC_CERTIFICATE_P12 }}
+          CSC_KEY_PASSWORD: ${{ secrets.MAC_CERTIFICATE_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          if [ "$MAC_SIGNED_RELEASE" = true ]; then
+            test -n "$CSC_LINK" && test -n "$CSC_KEY_PASSWORD"
+            test -n "$APPLE_ID" && test -n "$APPLE_APP_SPECIFIC_PASSWORD" && test -n "$APPLE_TEAM_ID"
+            export CSC_FOR_PULL_REQUEST=true
+          fi
+          npx electron-builder --config electron-builder.macos.cjs --mac --arm64 --publish never
+
+      - name: Smoke test packaged application
+        working-directory: source
+        env:
+          GS_SMOKE_TEST: '1'
+        run: |
+          'release/mac-arm64/Game Space Launcher.app/Contents/MacOS/Game Space Launcher'
+
+      - name: Collect installers and checksums
+        working-directory: source
+        env:
+          SIGNED: ${{ inputs.signed }}
+        run: |
+          mkdir artifacts
+          cp release/*.dmg release/*.zip artifacts/
+          if [ "$SIGNED" = true ]; then
+            cp release/latest-mac.yml artifacts/
+            cp release/*.blockmap artifacts/ 2>/dev/null || true
+          fi
+          cd artifacts
+          shasum -a 256 *.dmg *.zip > SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: launcher-macos-arm64-${{ github.run_number }}
+          path: source/artifacts/*
+          retention-days: 14
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: smoke-test-${{ github.run_number }}
+          path: source/smoke-test.png
+          if-no-files-found: ignore
+
+      - name: Create draft release
+        working-directory: source
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_COMMIT: ${{ inputs.source_commit }}
+          SIGNED: ${{ inputs.signed }}
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          tag="v${version}-build.${GITHUB_RUN_NUMBER}"
+          printf 'Apple Silicon (arm64). Source commit: `%s`.\n\n' "$SOURCE_COMMIT" > release-notes.md
+          if [ "$SIGNED" = true ]; then
+            printf 'Developer ID signed and notarized launcher. Game availability depends on the macOS distribution configuration.\n' >> release-notes.md
+          else
+            printf 'Testing build with ad-hoc signing. Not notarized; Gatekeeper may prevent normal installation. Automatic launcher updates are disabled. The macOS game build is not available yet.\n' >> release-notes.md
+          fi
+          gh release create "$tag" artifacts/* --repo gamespaceteam/launcher-macos --draft --title "Game Space Launcher ${version} — Apple Silicon" --notes-file release-notes.md
