@@ -30,3 +30,5 @@ For signed/notarized builds configure repository secrets:
 Review and publish a draft only after installation has been verified on a real Mac.
 Increase the version in the source repository for each released launcher update.
 Game builds are distributed independently through the game CDN.
+
+Launcher 0.1.3 adds file-based game updates: first installation uses ZIP; subsequent updates and repairs fetch only changed files when the game release contains `fileIndex`. The source `package-game` command generates `client.zip`, `files.json`, `objects/` and `current.json`. Upload the data and index before publishing current.json. Existing ZIP-only releases remain supported; large changed files are still downloaded in full (no block patches yet).
