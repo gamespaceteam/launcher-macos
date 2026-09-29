@@ -125,6 +125,6 @@ jobs:
             tag="v${version}"
             printf 'Developer ID signed and notarized launcher. Game availability depends on the macOS distribution configuration.\n' >> release-notes.md
           else
-            printf 'Testing build with ad-hoc signing. Not notarized; Gatekeeper may prevent normal installation. Automatic launcher updates are disabled. The macOS game build is not available yet.\n' >> release-notes.md
+            printf 'Runs without Apple Developer ID using local ad-hoc signing; not notarized. If macOS blocks the first launch, use System Settings → Privacy & Security → Open Anyway after attempting to open the app. See https://support.apple.com/102445.\n\nLauncher updates are manual: download a newer DMG, quit the app and replace it in Applications. Games and settings are preserved. Game installation and updates support ad-hoc arm64 app bundles without an Apple Team ID. The actual macOS game build is not available yet.\n' >> release-notes.md
           fi
           gh release create "$tag" artifacts/* --repo gamespaceteam/launcher-macos --draft --title "Game Space Launcher ${version} — Apple Silicon" --notes-file release-notes.md

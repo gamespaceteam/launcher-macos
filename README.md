@@ -9,8 +9,13 @@ Run **Actions → Build macOS launcher → Run workflow** with an exact Gitea so
 The workflow uses a read-only deploy key, runs tests, builds DMG/ZIP on an Apple Silicon runner,
 smoke-tests the packaged application and creates a **draft** GitHub release.
 
-Without Apple Developer ID, leave `signed` disabled. Test builds use ad-hoc signing and disable launcher auto-update.
-They are not production installers and have not been notarized by Apple.
+Without Apple Developer ID, leave `signed` disabled. This is the default distribution mode: builds use local ad-hoc signing and do not require an Apple account. They have not been notarized by Apple.
+
+Download the DMG, move the app into Applications and open it. If macOS blocks it as an unidentified developer, use **System Settings → Privacy & Security → Open Anyway** after the first launch attempt, as described in [Apple's instructions](https://support.apple.com/102445). Verify this on a real Mac after a browser download; CI does not reproduce browser quarantine.
+
+Launcher updates are manual: open **Settings → Launcher updates → Open releases page**, download a newer DMG, quit the launcher from its menu, and replace the application. Installed games and settings remain in Application Support. Game downloads and updates still run inside the launcher, and ad-hoc game bundles do not require an Apple Team ID.
+
+When Developer ID becomes available, configure the secrets below and enable `signed`. Install that first signed launcher manually; subsequent signed releases can use automatic updates. The source README documents independent signing policies for the launcher and game.
 
 For signed/notarized builds configure repository secrets:
 
